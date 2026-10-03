@@ -1,104 +1,163 @@
 ## Diagrama de arquitectura
 
+# Arquitectura del sistema Marketplace
+
+El sistema utiliza una **arquitectura monolítica modular de tres capas**, desarrollada con Node.js 20 LTS y Express. Está organizado en cinco módulos: usuarios, vendedores, catálogo, carrito y pedidos.
+
+## Diagrama de arquitectura
+
 ```mermaid
 flowchart TB
-    CLI([Cliente])
-    SEL([Seller])
-    ADM([Administrador])
-    WEB["<b>Cliente Web</b><br/>Navegador · HTML / CSS / JavaScript"]
+    %% ACTORES
+    subgraph ACTORES["Usuarios del sistema"]
+        direction LR
+        CLI["Cliente"]
+        SEL["Seller"]
+        ADM["Administrador"]
+    end
+
+    WEB["Cliente Web<br/>HTML / CSS / JavaScript"]
 
     CLI --> WEB
     SEL --> WEB
     ADM --> WEB
 
-    subgraph MONO["«monolito» Marketplace Backend · Node.js 20 LTS · Express<br/>Una sola aplicación · un solo proceso · un solo despliegue"]
-        MW["<b>Middlewares Express (transversales)</b><br/>cors · express.json() · auth (JWT) · validación de entrada · manejo de errores · logger"]
+    %% BACKEND MONOLITICO
+    subgraph MONO["Marketplace Backend - Node.js + Express"]
+        direction TB
 
-        subgraph PRES["1. CAPA DE PRESENTACIÓN<br/>Recibe peticiones HTTP, autentica, valida la entrada y responde JSON"]
-            UR["usuarios.routes.js"]
-            UC["usuarios.controller.js"]
-            SR["sellers.routes.js"]
-            SC["sellers.controller.js"]
-            CR["catalogo.routes.js"]
-            CC["catalogo.controller.js"]
-            KR["carrito.routes.js"]
-            KC["carrito.controller.js"]
-            PR["pedidos.routes.js"]
-            PC["pedidos.controller.js"]
+        MW["Middlewares Express<br/>CORS | JSON | JWT | Validación | Errores | Logger"]
+
+        %% PRESENTACION
+        subgraph PRESENTACION["1. CAPA DE PRESENTACIÓN"]
+            direction LR
+
+            subgraph USR["Módulo usuarios"]
+                UR["usuarios.routes.js"]
+                UC["usuarios.controller.js"]
+                UR --> UC
+            end
+
+            subgraph SELL["Módulo sellers"]
+                SR["sellers.routes.js"]
+                SC["sellers.controller.js"]
+                SR --> SC
+            end
+
+            subgraph CAT["Módulo catálogo"]
+                CR["catalogo.routes.js"]
+                CC["catalogo.controller.js"]
+                CR --> CC
+            end
+
+            subgraph CART["Módulo carrito"]
+                CAR["carrito.routes.js"]
+                CAC["carrito.controller.js"]
+                CAR --> CAC
+            end
+
+            subgraph ORD["Módulo pedidos"]
+                PR["pedidos.routes.js"]
+                PC["pedidos.controller.js"]
+                PR --> PC
+            end
         end
 
-        subgraph NEG["2. CAPA DE LÓGICA DE NEGOCIO<br/>Reglas de negocio y coordinación entre módulos"]
-            US["<b>usuarios.service.js</b><br/>registro, login, roles"]
-            SS["<b>sellers.service.js</b><br/>alta de tiendas, validación"]
-            CS["<b>catalogo.service.js</b><br/>productos, categorías, stock"]
-            KS["<b>carrito.service.js</b><br/>ítems, totales"]
-            PS["<b>pedidos.service.js</b><br/>checkout, estados, pago/envío"]
+        %% LOGICA DE NEGOCIO
+        subgraph LOGICA["2. CAPA DE LÓGICA DE NEGOCIO"]
+            direction LR
+            US["usuarios.service.js<br/>Registro, login y roles"]
+            SS["sellers.service.js<br/>Tiendas y validación"]
+            CS["catalogo.service.js<br/>Productos, categorías y stock"]
+            CAS["carrito.service.js<br/>Ítems y totales"]
+            PS["pedidos.service.js<br/>Checkout, estados, pago y envío"]
         end
 
-        subgraph DAT["3. CAPA DE DATOS<br/>Persistencia y consultas a la base de datos"]
-            URE["usuarios.repository.js"]
-            SRE["sellers.repository.js"]
-            CRE["catalogo.repository.js"]
-            KRE["carrito.repository.js"]
-            PRE["pedidos.repository.js"]
-            ORM["<b>Acceso a datos compartido</b><br/>Sequelize (ORM) · modelos · pool de conexiones (src/shared/db)"]
+        %% DATOS
+        subgraph DATOS["3. CAPA DE DATOS"]
+            direction TB
+
+            subgraph REPOS["Repositorios"]
+                direction LR
+                URepo["usuarios.repository.js"]
+                SRepo["sellers.repository.js"]
+                CRepo["catalogo.repository.js"]
+                CARepo["carrito.repository.js"]
+                PRepo["pedidos.repository.js"]
+            end
+
+            ORM["Acceso a datos compartido<br/>Sequelize ORM | Modelos | Pool de conexiones"]
         end
+
+        %% MIDDLEWARES
+        MW --> UR
+        MW --> SR
+        MW --> CR
+        MW --> CAR
+        MW --> PR
+
+        %% CONTROLADORES A SERVICIOS
+        UC --> US
+        SC --> SS
+        CC --> CS
+        CAC --> CAS
+        PC --> PS
+
+        %% SERVICIOS A REPOSITORIOS
+        US --> URepo
+        SS --> SRepo
+        CS --> CRepo
+        CAS --> CARepo
+        PS --> PRepo
+
+        %% REPOSITORIOS A ORM
+        URepo --> ORM
+        SRepo --> ORM
+        CRepo --> ORM
+        CARepo --> ORM
+        PRepo --> ORM
+
+        %% COMUNICACION ENTRE MODULOS
+        PS -.-> US
+        PS -.-> CS
+        PS -.-> CAS
+        CS -.-> SS
     end
 
-    DB[("<b>PostgreSQL</b><br/>marketplace_db")]
-    PAG["«sistema externo»<br/><b>Pasarela de pagos</b><br/>(p. ej. Culqi / Niubiz)"]
-    ENV["«sistema externo»<br/><b>Servicio de envíos</b><br/>(API del courier)"]
+    %% BASE DE DATOS
+    DB[("PostgreSQL<br/>marketplace_db")]
 
-    WEB -->|"HTTPS · JSON · /api/v1/*"| MW
+    %% SERVICIOS EXTERNOS
+    PAGOS["Pasarela de pagos<br/>Culqi / Niubiz"]
+    ENVIOS["Servicio de envíos<br/>API del courier"]
 
-    MW --> UR
-    MW --> SR
-    MW --> CR
-    MW --> KR
-    MW --> PR
+    %% CONEXIONES EXTERNAS
+    WEB -->|"HTTPS / JSON"| MW
+    ORM -->|"SQL / TCP 5432"| DB
+    PS -->|"HTTPS / REST"| PAGOS
+    PS -->|"HTTPS / REST"| ENVIOS
 
-    UR --> UC --> US --> URE
-    SR --> SC --> SS --> SRE
-    CR --> CC --> CS --> CRE
-    KR --> KC --> KS --> KRE
-    PR --> PC --> PS --> PRE
+    %% ESTILOS
+    classDef actor fill:#ffffff,stroke:#777,color:#222
+    classDef middleware fill:#dae5fb,stroke:#91aad4,color:#222
+    classDef presentation fill:#edf3ff,stroke:#8ca8d4,color:#222
+    classDef service fill:#deedcf,stroke:#a5c68c,color:#222
+    classDef repository fill:#fff9e9,stroke:#dbba65,color:#222
+    classDef orm fill:#f8e8cd,stroke:#d5ac65,color:#222
+    classDef external fill:#eeeeee,stroke:#888,color:#222
 
-    URE --> ORM
-    SRE --> ORM
-    CRE --> ORM
-    KRE --> ORM
-    PRE --> ORM
-
-    PS -.-> KS
-    KS -.-> CS
-    CS -.-> SS
-    SS -.-> US
-    PS -.-> US
-
-    PS -->|"HTTPS / REST"| PAG
-    PS -->|"HTTPS / REST"| ENV
-    ORM -->|"SQL · TCP 5432"| DB
-
-    linkStyle 29,30,31,32,33 stroke:#38761d,stroke-width:1.5px,stroke-dasharray:4 3
-
-    style MONO fill:#ffffff,stroke:#333,stroke-dasharray:6 4
-    style PRES fill:#e4ebf8,stroke:#aebfe0
-    style NEG fill:#e3f0dc,stroke:#b5d3a6
-    style DAT fill:#fdf0d9,stroke:#e6cf9f
-
-    classDef externo fill:#eeeeee,stroke:#666,color:#000
-    classDef presentacion fill:#ffffff,stroke:#3b5b9d,color:#000
-    classDef negocio fill:#d3e5c8,stroke:#38761d,color:#000
-    classDef datos fill:#ffffff,stroke:#bf9000,color:#000
-    classDef orm fill:#fde4bb,stroke:#bf9000,color:#000
-    classDef transversal fill:#dbe5f8,stroke:#3b5b9d,color:#000
-
-    class PAG,ENV externo
-    class UR,UC,SR,SC,CR,CC,KR,KC,PR,PC presentacion
-    class US,SS,CS,KS,PS negocio
-    class URE,SRE,CRE,KRE,PRE datos
+    class CLI,SEL,ADM actor
+    class MW middleware
+    class UR,UC,SR,SC,CR,CC,CAR,CAC,PR,PC presentation
+    class US,SS,CS,CAS,PS service
+    class URepo,SRepo,CRepo,CARepo,PRepo repository
     class ORM orm
-    class MW transversal
+    class PAGOS,ENVIOS external
+
+    style MONO fill:#ffffff,stroke:#555,stroke-width:2px,stroke-dasharray:7 5
+    style PRESENTACION fill:#e7effb,stroke:#a5b8d4
+    style LOGICA fill:#edf5e7,stroke:#a3bf91
+    style DATOS fill:#fff4dd,stroke:#d6bb83
 ```
 
 
@@ -107,9 +166,6 @@ flowchart TB
 **Estilo seleccionado:** Monolito modular con arquitectura en capas.
 
 Todo el backend se ejecuta como una sola aplicación (un solo proceso y un solo despliegue), organizada en módulos independientes y en tres capas: presentación, lógica de negocio y datos. Esta decisión responde a los drivers DA01 (Escalabilidad) y DA06 (Mantenibilidad), y está registrada en ADR-001.
-
-
-
 
 
 ## Reglas de la arquitectura
